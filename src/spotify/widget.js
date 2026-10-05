@@ -73,14 +73,33 @@ try {
 accent();
 
 /* ---------- views ---------- */
-function viewLogin() {
-  $('#spU').innerHTML = '';
-  $('#spB').innerHTML = sp.hasClientId
-    ? `<div class="sp-hero"><div class="sp-orb"><s></s><s></s><s></s><i>${I.sp}</i></div>
-       <h3>Study. Focus. Play.</h3><p>Connect Spotify to browse your playlists and control music without leaving your plan.</p>
-       <button class="sp-cta" id="spLogin" type="button">Connect Spotify</button><small>In-browser playback needs Spotify Premium</small></div>`
-    : `<div class="sp-hero"><h3>Client ID missing</h3><p>Add <code>VITE_SPOTIFY_CLIENT_ID</code> in Netlify environment variables and redeploy.</p></div>`;
-  const b = $('#spLogin'); if (b) b.onclick = () => sp.login();
+async function connect() {
+  try { await sp.login(); } catch (e) { note(e.message || 'Could not start Spotify login'); }
+}
+
+// Header is ALWAYS filled: profile + Log out when we have a user, otherwise a Connect button
+function renderHeader(me) {
+  const u = $('#spU');
+  if (me) {
+    const av = me.images && me.images[0];
+    u.innerHTML = `${av ? `<img alt="" src="${esc(av.url)}">` : ''}<span>${esc(me.display_name || me.id)}</span><button type="button" id="spOut">Log out</button>`;
+    $('#spOut').onclick = signOut;
+  } else {
+    u.innerHTML = `<button type="button" id="spHc">Connect</button>`;
+    $('#spHc').onclick = connect;
+  }
+}
+
+function viewLogin(msg) {
+  renderHeader(null);
+  const text = !sp.hasClientId
+    ? 'Spotify Client ID is missing. Add <code>VITE_SPOTIFY_CLIENT_ID</code> in Netlify and redeploy.'
+    : msg || 'Connect Spotify to browse your playlists and control music without leaving your plan.';
+  $('#spB').innerHTML = `<div class="sp-hero"><div class="sp-orb"><s></s><s></s><s></s><i>${I.sp}</i></div>
+    <h3>Study. Focus. Play.</h3><p>${text}</p>
+    <button class="sp-cta" id="spLogin" type="button">Connect to Spotify</button>
+    <small>In-browser playback needs Spotify Premium</small></div>`;
+  $('#spLogin').onclick = connect;
 }
 
 function viewApp() {
@@ -156,6 +175,7 @@ async function playContext(uri) {
     await sp.api('/me/player/play' + (S.dev ? '?device_id=' + S.dev : ''), { method: 'PUT', body: { context_uri: uri } });
     tab('np');
   } catch (e) {
+    if (e.status === 401) return signOut();
     note(e.status === 403 ? 'Spotify Premium is required to play' : e.status === 404 ? 'Player not ready yet, try again' : 'Could not start playback');
   }
 }
@@ -186,8 +206,14 @@ setInterval(() => {
 }, 250);
 
 function initPlayer() {
+  if (player || window.__spSdkLoading) return;
+  window.__spSdkLoading = true;
   window.onSpotifyWebPlaybackSDKReady = () => {
-    player = new window.Spotify.Player({ name: 'JEE Study Lab', getOAuthToken: (cb) => sp.getToken().then(cb), volume: 0.6 });
+    player = new window.Spotify.Player({
+      name: 'JEE Study Lab',
+      getOAuthToken: (cb) => sp.getToken().then(cb).catch(() => signOut()),
+      volume: 0.6,
+    });
     player.addListener('ready', async ({ device_id }) => {
       S.dev = device_id;
       try { await sp.api('/me/player', { method: 'PUT', body: { device_ids: [device_id], play: false } }); } catch {}
@@ -198,32 +224,55 @@ function initPlayer() {
     player.addListener('initialization_error', () => note('This browser does not support the Spotify player'));
     player.connect();
   };
-  const s = document.createElement('script'); s.src = 'https://sdk.scdn.co/spotify-player.js'; s.async = true; document.head.appendChild(s);
+  const s = document.createElement('script');
+  s.src = 'https://sdk.scdn.co/spotify-player.js'; s.async = true;
+  s.onerror = () => { window.__spSdkLoading = false; note('Could not load the Spotify player'); };
+  document.head.appendChild(s);
 }
 
+// Always ends on the Connect view
 function signOut() {
-  sp.logout(); if (player) player.disconnect(); player = null; S.st = null; S.pl = [];
-  root.dataset.play = '0'; root.dataset.art = '0'; viewLogin();
+  sp.logout();
+  try { if (player) player.disconnect(); } catch {}
+  player = null; S.st = null; S.pl = []; S.dev = null; S.ctx = '';
+  window.__spSdkLoading = false;
+  root.dataset.play = '0'; root.dataset.art = '0';
+  viewLogin();
 }
 
 async function start() {
-  viewApp(); initPlayer();
-  try {
-    const [me, pl] = await Promise.all([sp.api('/me'), sp.fetchAllPlaylists()]);
-    S.pl = pl;
-    const av = me.images && me.images[0];
-    $('#spU').innerHTML = `${av ? `<img alt="" src="${esc(av.url)}">` : ''}<span>${esc(me.display_name || me.id)}</span><button type="button" id="spOut">Log out</button>`;
-    $('#spOut').onclick = signOut;
-    renderList();
-  } catch (e) {
-    if (e.status === 401) return signOut();
+  viewApp();
+  renderHeader(null); // never leave the header blank while loading
+  const [meR, plR] = await Promise.allSettled([sp.api('/me'), sp.fetchAllPlaylists()]);
+
+  const expired = [meR, plR].some((r) => r.status === 'rejected' && r.reason && r.reason.status === 401);
+  if (expired || !sp.isLoggedIn()) return signOut(); // falls back to the Connect view
+
+  initPlayer();
+
+  if (meR.status === 'fulfilled') renderHeader(meR.value);
+  else note('Could not load your profile'); // header keeps its Connect button
+
+  if (plR.status === 'fulfilled') { S.pl = plR.value; renderList(); }
+  else {
     $('#spLs').innerHTML = '<li class="sp-empty">Could not load playlists</li>';
-    note(e.status === 403 ? 'Add your account under User Management in the Spotify dashboard' : 'Spotify request failed');
+    const st = plR.reason && plR.reason.status;
+    note(st === 403 ? 'Add your account under User Management in the Spotify dashboard' : 'Spotify request failed');
   }
 }
 
 (async function boot() {
-  let fresh = false;
-  try { fresh = await sp.handleRedirect(); } catch (e) { console.warn('Spotify login failed', e); }
-  if (sp.isLoggedIn()) { if (fresh) setOpen(true); start(); } else viewLogin();
+  viewLogin(); // render something immediately so the panel is never blank
+  let loginErr = false;
+  try { await sp.handleRedirect(); } catch (e) { loginErr = true; console.warn('Spotify login failed', e); }
+  try {
+    if (sp.isLoggedIn()) { await start(); }
+    else {
+      viewLogin(loginErr ? 'Login failed. Please try again.' : undefined);
+      if (loginErr) setOpen(true);
+    }
+  } catch (e) {
+    console.error(e);
+    viewLogin('Something went wrong. Please reconnect.');
+  }
 })();
