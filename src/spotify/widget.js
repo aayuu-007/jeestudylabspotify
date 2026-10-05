@@ -1,5 +1,5 @@
 import './widget.css';
-import * as sp from './spotify.js';
+import { onPlayerState, stopListenTracking } from './listenTracker.js';
 
 /* ---------- extra styles for tracks, search and the 3-tab bar (same theme tokens as widget.css) ---------- */
 const EXTRA_CSS = `
