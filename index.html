@@ -3858,6 +3858,8 @@ function shTaskHtml(it){
 function shFlame(z){return'<svg class="shfl'+(z?' z':'')+'" viewBox="0 0 24 24" aria-hidden="true"><path fill="url(#shFlG)" stroke="none" d="M12 1.8c.6 3-.7 4.7-2.6 6.7C7.6 10.4 6.4 12.4 6.4 15a5.6 5.6 0 0 0 11.2 0c0-2.3-.9-4-2.1-5.4-.3 1.4-.9 2.3-1.9 2.8.6-3.7 0-7.8-1.6-10.6z"/><path class="i" fill="url(#shFlI)" stroke="none" d="M12 21.4a3.1 3.1 0 0 0 3.1-3.2c0-1.7-1.1-2.7-2-3.9-.5.9-1 1.3-1.7 1.5.2-1.3-.1-2.4-.8-3.5-.3 1.4-1.7 2.4-1.7 4.6a3.1 3.1 0 0 0 3.1 3.5z"/></svg>';}
 function shStkPill(d){return'<div class="shstk'+(d.stk?'':' z')+'"><svg viewBox="0 0 24 24"><path d="'+FLP+'"/></svg>'+d.stk+' DAY STREAK</div>';}
 function shStkTile(d){return'<div class="bkst"><span class="fi"><svg viewBox="0 0 24 24"><path d="'+FLP+'"/></svg></span><div class="tx"><b>'+d.stk+' day streak</b><small>Best '+d.stkBest+(d.stkBest===1?' day':' days')+'</small></div><div class="wk">'+d.wk.map(function(o){return'<i'+(o?' class="on"':'')+'></i>';}).join('')+'</div></div>';}
+var SHSP='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.52 17.34c-.24.36-.66.48-1.02.24-2.82-1.74-6.36-2.1-10.56-1.14-.42.12-.78-.18-.9-.54-.12-.42.18-.78.54-.9 4.56-1.02 8.52-.6 11.64 1.32.42.18.48.66.3 1.02zm1.44-3.3c-.3.42-.84.6-1.26.3-3.24-1.98-8.16-2.58-11.94-1.38-.48.12-.99-.12-1.11-.6-.12-.48.12-.99.6-1.11 4.38-1.32 9.78-.66 13.5 1.62.36.18.54.78.21 1.17zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.3c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.42-1.02.6-1.56.3z"/></svg>';
+function shLis(){var j=window.jslListen;return j?j.format(j.getMs()):'0m';}
 function shAvHtml(d){return d.avatar?'<img alt="" referrerpolicy="no-referrer" src="'+esc(d.avatar)+'">':esc(d.emoji);}
 function shPaint(){
  var d=shData=shCollect(),F=$('shFront'),B=$('shBack'),bn=d.banner?'<img alt="" referrerpolicy="no-referrer" src="'+esc(d.banner)+'" onerror="this.remove()">':'';
@@ -3873,7 +3875,7 @@ function shPaint(){
  var mx=d.rows.length?d.rows[0].ms:1;
  B.innerHTML='<div class="bkh"><div class="shav" style="--pfop:'+d.apos+'"><div class="in">'+shAvHtml(d)+'</div></div><div class="nm">'+esc(d.name)+'</div><div class="shdate">'+esc(d.date)+'</div></div>'
   +'<div class="bkhero"><div class="shtm">'+shParts(d.ms).map(function(p){return'<span><b>'+p[0]+'</b><i>'+p[1]+'</i></span>';}).join('')+'</div><div class="bklb">Total focus today</div><div class="bkbar"></div></div>'
-  +'<div class="bk3"><div class="sk'+(d.stk?'':' z')+'"><b>'+shFlame(!d.stk)+d.stk+'</b><small>Streak</small></div><div><b>'+d.done+'/'+d.total+'</b><small>Tasks done</small></div><div><b>'+d.sessions+'</b><small>Sessions</small></div></div>'
+  +'<div class="bk3"><div class="sk'+(d.stk?'':' z')+'"><b>'+shFlame(!d.stk)+d.stk+'</b><small>Streak</small></div><div><b>'+d.done+'/'+d.total+'</b><small>Tasks</small></div><div><b>'+d.sessions+'</b><small>Sessions</small></div><div class="sl"><b>'+SHSP+'<em data-lis>'+shLis()+'</em></b><small>Listened</small></div></div>'
   +'<div class="bksh">'+SHI.book+'By subject</div><div class="shsubs" id="shSubs"></div>';
  var sb=$('shSubs'),m=shFitRows(d.rows.length,sb.clientHeight);
  sb.innerHTML=d.rows.length?d.rows.slice(0,m).map(function(r){return'<div class="shsr"><div class="shrw"><i style="background:'+r.c+'"></i><span>'+esc(r.n)+'</span><em>'+shHM(r.ms)+'</em><u>'+Math.round(r.ms/d.ms*100)+'%</u></div><div class="shbr"><s style="background:'+r.c+';width:'+Math.max(4,Math.round(r.ms/mx*100))+'%"></s></div></div>';}).join('')+(m<d.rows.length?'<div class="shmore">+'+(d.rows.length-m)+' more</div>':''):'<div class="shnone">No focus logged today</div>';
@@ -3889,6 +3891,7 @@ async function shOpen(){
 }
 function shClose(){$('shm').classList.remove('on');window.removeEventListener('resize',shScale);if(shFocus&&shFocus.focus)try{shFocus.focus({preventScroll:true});}catch(e){}}
 $('shBtn').addEventListener('click',shOpen);
+window.addEventListener('spotify:listen',function(){var b=$('shBack'),e=b&&b.querySelector('[data-lis]');if(e)e.textContent=shLis();});
 $('shFlip').addEventListener('click',function(){shSet(shSide==='f'?'b':'f');});
 $('shFlip').addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();shSet(shSide==='f'?'b':'f');}});
 bdClose($('shm'),shClose);
