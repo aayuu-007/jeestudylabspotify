@@ -57,3 +57,4 @@ export function formatListen(ms) {
 
 window.addEventListener('pagehide', () => { tick(); save(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { tick(); save(); } });
+window.jslListen = { getMs: getListenMs, format: formatListen };
