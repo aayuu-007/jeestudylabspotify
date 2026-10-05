@@ -73,6 +73,30 @@ root.innerHTML = `
 </section>`;
 document.body.appendChild(root);
 
+/* ---------- follow the app theme (page accent, or Tasks hub theme when it is open) ----------
+   NOTE: this block must stay ABOVE the first setOpen() call below, because setOpen(true) calls accent(),
+   and `hub` is a const (touching it earlier throws a Temporal Dead Zone ReferenceError). */
+const hub = document.getElementById('hub');
+function accent() {
+  let acc = '#8fa6ff', ar = '143,166,255';
+  const rt = hub && hub.shadowRoot && hub.shadowRoot.querySelector('.root');
+  if (rt && !hub.hidden) {
+    const cs = getComputedStyle(rt);
+    acc = cs.getPropertyValue('--acc').trim() || acc;
+    ar = cs.getPropertyValue('--ar').trim() || ar;
+  }
+  root.style.setProperty('--sp-acc', acc);
+  root.style.setProperty('--sp-ar', ar);
+}
+try {
+  const mo = new MutationObserver(accent);
+  if (hub) mo.observe(hub, { attributes: true, attributeFilter: ['hidden', 'class'] });
+  const rt = hub && hub.shadowRoot && hub.shadowRoot.querySelector('.root');
+  if (rt) mo.observe(rt, { attributes: true, attributeFilter: ['data-t'] });
+} catch {}
+accent();
+
+/* ---------- open / close ---------- */
 const setOpen = (o) => {
   root.dataset.open = o ? '1' : '0';
   $('#spF').setAttribute('aria-expanded', String(o));
@@ -93,27 +117,6 @@ const note = (msg) => {
   const n = $('#spNote'); n.textContent = msg; n.classList.add('on');
   clearTimeout(noteT); noteT = setTimeout(() => n.classList.remove('on'), 4200);
 };
-
-/* ---------- follow the app theme (page accent, or Tasks hub theme when it is open) ---------- */
-const hub = document.getElementById('hub');
-function accent() {
-  let acc = '#8fa6ff', ar = '143,166,255';
-  const rt = hub && hub.shadowRoot && hub.shadowRoot.querySelector('.root');
-  if (rt && !hub.hidden) {
-    const cs = getComputedStyle(rt);
-    acc = cs.getPropertyValue('--acc').trim() || acc;
-    ar = cs.getPropertyValue('--ar').trim() || ar;
-  }
-  root.style.setProperty('--sp-acc', acc);
-  root.style.setProperty('--sp-ar', ar);
-}
-try {
-  const mo = new MutationObserver(accent);
-  if (hub) mo.observe(hub, { attributes: true, attributeFilter: ['hidden', 'class'] });
-  const rt = hub && hub.shadowRoot && hub.shadowRoot.querySelector('.root');
-  if (rt) mo.observe(rt, { attributes: true, attributeFilter: ['data-t'] });
-} catch {}
-accent();
 
 /* ---------- views ---------- */
 async function connect() {
