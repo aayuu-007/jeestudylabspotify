@@ -10,12 +10,23 @@ export const SCOPES = [
 const TK = 'sp-tokens', VK = 'sp-verifier', SK = 'sp-state';
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const rand = (n) => b64url(crypto.getRandomValues(new Uint8Array(n)));
-const read = () => { try { return JSON.parse(localStorage.getItem(TK)); } catch { return null; } };
 
-export const isLoggedIn = () => !!read();
+const read = () => {
+  try {
+    const t = JSON.parse(localStorage.getItem(TK));
+    return t && t.access ? t : null;
+  } catch { return null; }
+};
+
+// A session is valid if the access token is still fresh OR we can refresh it
+export const isLoggedIn = () => {
+  const t = read();
+  return !!t && (Date.now() < t.exp || !!t.refresh);
+};
 export const logout = () => localStorage.removeItem(TK);
 
 export async function login() {
+  if (!CLIENT_ID) throw new Error('VITE_SPOTIFY_CLIENT_ID is missing in the build');
   const verifier = rand(64), state = rand(12);
   localStorage.setItem(VK, verifier);
   localStorage.setItem(SK, state);
@@ -33,7 +44,10 @@ async function tokenRequest(body) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),
   });
-  if (!r.ok) throw new Error('token ' + r.status);
+  if (!r.ok) {
+    if (body.grant_type === 'refresh_token') logout(); // dead refresh token: drop the session
+    throw Object.assign(new Error('token ' + r.status), { status: 401 });
+  }
   const j = await r.json();
   const t = { access: j.access_token, refresh: j.refresh_token || read()?.refresh, exp: Date.now() + j.expires_in * 1000 - 60000 };
   localStorage.setItem(TK, JSON.stringify(t));
@@ -55,7 +69,10 @@ export async function handleRedirect() {
 export async function getToken() {
   let t = read();
   if (!t) throw Object.assign(new Error('not logged in'), { status: 401 });
-  if (Date.now() > t.exp) t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh });
+  if (Date.now() > t.exp) {
+    if (!t.refresh) { logout(); throw Object.assign(new Error('session expired'), { status: 401 }); }
+    t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh });
+  }
   return t.access;
 }
 
