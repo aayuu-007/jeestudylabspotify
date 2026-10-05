@@ -99,3 +99,52 @@ export async function fetchAllPlaylists() {
   }
   return out;
 }
+
+/* ---------- tracks: playlist contents + global search ---------- */
+
+// Reduce a Spotify track/episode object to what the widget needs. Returns null if it can't be played.
+export function normTrack(t) {
+  if (!t || !t.uri || t.is_local || String(t.uri).startsWith('spotify:local:')) return null;
+  const imgs = (t.album && t.album.images) || t.images || [];
+  const im = imgs[Math.min(1, imgs.length - 1)];
+  return {
+    uri: t.uri,
+    name: t.name || 'Untitled',
+    artists: (t.artists || []).map((a) => a.name).join(', ') || (t.show && t.show.name) || '',
+    img: im ? im.url : '',
+    ms: t.duration_ms || 0,
+  };
+}
+
+// One page of a playlist's tracks. Each item keeps its absolute position (idx) so we can start playback from it.
+// Note: Spotify only returns these for playlists the user owns or collaborates on.
+export async function fetchPlaylistItems(id, offset = 0, limit = 50) {
+  const q = `?limit=${limit}&offset=${offset}&market=from_token`;
+  let j;
+  try { j = await api(`/playlists/${encodeURIComponent(id)}/items${q}`); }
+  catch (e) {
+    if (e.status === 404) j = await api(`/playlists/${encodeURIComponent(id)}/tracks${q}`); // older API shape
+    else throw e;
+  }
+  const raw = (j && j.items) || [];
+  const items = [];
+  raw.forEach((e, k) => {
+    const n = normTrack(e && (e.item || e.track));
+    if (n) { n.idx = offset + k; items.push(n); }
+  });
+  return { items, total: (j && j.total) || 0, next: !!(j && j.next), offset: offset + raw.length };
+}
+
+// GET /search?type=track  (Spotify caps limit at 10 per request)
+export async function searchTracks(q, offset = 0, limit = 10) {
+  const p = new URLSearchParams({ q, type: 'track', limit: String(limit), offset: String(offset), market: 'from_token' });
+  const j = await api('/search?' + p);
+  const tr = (j && (j.tracks || j.items)) || {};
+  const raw = tr.items || [];
+  const nextOffset = offset + raw.length;
+  return {
+    items: raw.map((t) => normTrack(t)).filter(Boolean),
+    offset: nextOffset,
+    next: raw.length > 0 && (!!tr.next || nextOffset < (tr.total || 0)) && nextOffset < 100,
+  };
+}
