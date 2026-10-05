@@ -54,8 +54,8 @@ const EQ = '<b></b><b></b><b></b>';
 
 const S = {
   pl: [], q: '', dev: null, st: null, ctx: '', pos: 0, at: 0, shuf: false,
-  cur: null, // currently opened playlist: { p, items, offset, more, busy }
-  se: { q: '', items: [], offset: 0, next: false }, // search state
+  cur: null,
+  se: { q: '', items: [], offset: 0, next: false },
 };
 let player = null, noteT = 0, seT = 0, seSeq = 0;
 
@@ -73,9 +73,6 @@ root.innerHTML = `
 </section>`;
 document.body.appendChild(root);
 
-/* ---------- follow the app theme (page accent, or Tasks hub theme when it is open) ----------
-   NOTE: this block must stay ABOVE the first setOpen() call below, because setOpen(true) calls accent(),
-   and `hub` is a const (touching it earlier throws a Temporal Dead Zone ReferenceError). */
 const hub = document.getElementById('hub');
 function accent() {
   let acc = '#8fa6ff', ar = '143,166,255';
@@ -96,7 +93,6 @@ try {
 } catch {}
 accent();
 
-/* ---------- open / close ---------- */
 const setOpen = (o) => {
   root.dataset.open = o ? '1' : '0';
   $('#spF').setAttribute('aria-expanded', String(o));
@@ -108,7 +104,7 @@ $('#spM').onclick = () => setOpen(false);
 root.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   const t = e.target;
-  if (t && t.matches && t.matches('input[type=search]') && t.value) return; // let Esc clear the search box first
+  if (t && t.matches && t.matches('input[type=search]') && t.value) return;
   setOpen(false); $('#spF').focus();
 });
 setOpen(root.dataset.open === '1');
@@ -118,12 +114,10 @@ const note = (msg) => {
   clearTimeout(noteT); noteT = setTimeout(() => n.classList.remove('on'), 4200);
 };
 
-/* ---------- views ---------- */
 async function connect() {
   try { await sp.login(); } catch (e) { note(e.message || 'Could not start Spotify login'); }
 }
 
-// Header is ALWAYS filled: profile + Log out when we have a user, otherwise a Connect button
 function renderHeader(me) {
   const u = $('#spU');
   if (me) {
@@ -197,7 +191,6 @@ function viewApp() {
 
   document.querySelectorAll('.sp-tabs button').forEach((b) => (b.onclick = () => tab(b.dataset.t)));
 
-  // player controls
   $('#spPP').onclick = () => {
     if (!player) return note('Player is still starting…');
     player.activateElement && player.activateElement();
@@ -218,7 +211,6 @@ function viewApp() {
     const ms = f * S.st.duration; player.seek(ms); S.pos = ms; S.at = performance.now();
   };
 
-  // playlists: list -> open -> tracks
   $('#spQ').oninput = (e) => { S.q = e.target.value; renderList(); };
   $('#spLs').onclick = (e) => { const b = e.target.closest('button[data-u]'); if (b) openPlaylist(b.dataset.u); };
   $('#spBk').onclick = closePlaylist;
@@ -231,7 +223,6 @@ function viewApp() {
     if (t) play({ context_uri: S.cur.p.uri, offset: { position: t.idx } });
   };
 
-  // global search
   $('#spSq').oninput = (e) => { clearTimeout(seT); const v = e.target.value; seT = setTimeout(() => runSearch(v), 380); };
   $('#spSq').onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(seT); runSearch(e.target.value); } };
   $('#spSm').onclick = () => runSearch(S.se.q, true);
@@ -239,7 +230,6 @@ function viewApp() {
     const b = e.target.closest('button[data-tu]');
     if (!b) return;
     const i = +b.dataset.i;
-    // play the clicked song, then the following results as a small queue
     play({ uris: S.se.items.slice(i, i + 50).map((t) => t.uri) });
   };
 }
@@ -251,7 +241,6 @@ function tab(t) {
   if (t === 'se' && matchMedia('(hover:hover)').matches) setTimeout(() => { const i = $('#spSq'); if (i) i.focus(); }, 60);
 }
 
-/* ---------- playlists ---------- */
 const plTotal = (p) => (p.items && p.items.total) ?? (p.tracks && p.tracks.total);
 
 function renderList() {
@@ -281,7 +270,6 @@ function trackRow(t, i, k) {
     <span class="sp-eq2">${EQ}</span><span class="sp-dur">${t.ms ? fmt(t.ms) : ''}</span></button></li>`;
 }
 
-// Render items[start..] into ul. append=true adds to the end, otherwise replaces the whole list.
 function renderTracks(ul, items, start, append, emptyMsg) {
   const html = items.slice(start).map((t, k) => trackRow(t, start + k, k)).join('');
   if (append && items.length) ul.insertAdjacentHTML('beforeend', html);
@@ -335,7 +323,6 @@ async function loadTracks(more) {
   }
 }
 
-/* ---------- global search ---------- */
 async function runSearch(raw, more = false) {
   const q = String(raw || '').trim();
   const ul = $('#spSl'), btn = $('#spSm');
@@ -365,7 +352,6 @@ async function runSearch(raw, more = false) {
   }
 }
 
-/* ---------- playback ---------- */
 async function play(body) {
   if (player && player.activateElement) player.activateElement();
   try {
@@ -377,7 +363,6 @@ async function play(body) {
   }
 }
 
-// Highlight the playing playlist and the playing track in every list
 function markPlaying() {
   const cu = curUri();
   document.querySelectorAll('.sp-list button[data-tu]').forEach((b) => b.classList.toggle('on', !!cu && b.dataset.tu === cu));
@@ -422,8 +407,18 @@ function initPlayer() {
       S.dev = device_id;
       try { await sp.api('/me/player', { method: 'PUT', body: { device_ids: [device_id], play: false } }); } catch {}
     });
-    player.addListener('player_state_changed', onState);
-    player.addListener('authentication_error', signOut);
+    
+    // Listen tracker integration added here:
+    player.addListener('player_state_changed', (state) => {
+      onPlayerState(state);
+      onState(state);
+    });
+    
+    player.addListener('not_ready', () => stopListenTracking());
+    player.addListener('authentication_error', () => {
+      stopListenTracking();
+      signOut();
+    });
     player.addListener('account_error', () => note('Spotify Premium is required for in-browser playback'));
     player.addListener('initialization_error', () => note('This browser does not support the Spotify player'));
     player.connect();
@@ -434,10 +429,10 @@ function initPlayer() {
   document.head.appendChild(s);
 }
 
-// Always ends on the Connect view
 function signOut() {
   sp.logout();
   try { if (player) player.disconnect(); } catch {}
+  stopListenTracking();
   clearTimeout(seT); seSeq++;
   player = null; S.st = null; S.pl = []; S.dev = null; S.ctx = ''; S.cur = null;
   S.se = { q: '', items: [], offset: 0, next: false };
@@ -448,16 +443,16 @@ function signOut() {
 
 async function start() {
   viewApp();
-  renderHeader(null); // never leave the header blank while loading
+  renderHeader(null);
   const [meR, plR] = await Promise.allSettled([sp.api('/me'), sp.fetchAllPlaylists()]);
 
   const expired = [meR, plR].some((r) => r.status === 'rejected' && r.reason && r.reason.status === 401);
-  if (expired || !sp.isLoggedIn()) return signOut(); // falls back to the Connect view
+  if (expired || !sp.isLoggedIn()) return signOut();
 
   initPlayer();
 
   if (meR.status === 'fulfilled') renderHeader(meR.value);
-  else note('Could not load your profile'); // header keeps its Connect button
+  else note('Could not load your profile');
 
   if (plR.status === 'fulfilled') { S.pl = plR.value; renderList(); }
   else {
@@ -468,7 +463,7 @@ async function start() {
 }
 
 (async function boot() {
-  viewLogin(); // render something immediately so the panel is never blank
+  viewLogin();
   let loginErr = false;
   try { await sp.handleRedirect(); } catch (e) { loginErr = true; console.warn('Spotify login failed', e); }
   try {
